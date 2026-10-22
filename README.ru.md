@@ -33,7 +33,10 @@ brew install android-platform-tools
 curl -L https://github.com/ischademadda/adbmount/releases/latest/download/adbmount-macos-universal.tar.gz | tar xz
 xattr -d com.apple.quarantine adbmount 2>/dev/null; sudo mv adbmount /usr/local/bin/
 
-# б) из исходников
+# б) через Go (нужен установленный FUSE-T, cgo собирается против него)
+go install github.com/ischademadda/adbmount@latest
+
+# в) из клона репозитория
 brew install go
 git clone https://github.com/ischademadda/adbmount.git && cd adbmount
 make build && sudo make install   # или: make install PREFIX=$HOME/.local
