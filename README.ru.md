@@ -10,52 +10,108 @@
 ничего не ставит на телефон, нужна только отладка по USB.
 
 ```
-телефон ──USB── adb ──► adbfs (Go, cgofuse) ──► FUSE-T (NFS) ──► Finder, Python, ffmpeg, foobar2000…
+телефон ──USB/Wi-Fi── adb ──► adbmount serve (Go, cgofuse) ──► FUSE-T (NFS) ──► Finder, Python, ffmpeg, foobar2000…
 ```
 
-В репозитории две части: `adbfs`, демон файловой системы (Go), и `adbmount`, небольшой
-shell-скрипт: он находит SD-карту, запускает по одному `adbfs` на том и аккуратно отмонтирует.
+Один бинарник делает всё: `adbmount up` монтирует телефон, `adbmount pull/push` копируют папки
+в стиле rsync, `adbmount wifi` убирает кабель, `adbmount doctor` подсказывает, что сломано.
 
 ## Требования
 
 * macOS (Apple Silicon или Intel)
 * [FUSE-T](https://www.fuse-t.org/) и Android platform tools
-* Go (только для сборки, версия из `go.mod`)
+* Go (только для сборки из исходников, версия из `go.mod`)
 * Android-телефон с включённой **отладкой по USB**, компьютер должен быть авторизован
 
 ## Установка
 
 ```bash
 brew install --cask fuse-t        # попросит пароль администратора
-brew install android-platform-tools go
+brew install android-platform-tools
 
-git clone https://github.com/ischademadda/adbmount.git
-cd adbmount
-make build                        # соберёт ./adbfs
-sudo make install                 # по желанию: копирует adbfs и adbmount в /usr/local/bin
+# а) готовый universal-бинарник (Apple Silicon + Intel) из последнего релиза
+curl -L https://github.com/ischademadda/adbmount/releases/latest/download/adbmount-macos-universal.tar.gz | tar xz
+xattr -d com.apple.quarantine adbmount 2>/dev/null; sudo mv adbmount /usr/local/bin/
+
+# б) из исходников
+brew install go
+git clone https://github.com/ischademadda/adbmount.git && cd adbmount
+make build && sudo make install   # или: make install PREFIX=$HOME/.local
 ```
 
-`adbmount` ищет `adbfs` рядом с собой (можно задать `ADBFS_BIN=/path/to/adbfs`), поэтому держите
-файлы вместе. Чтобы ставить без sudo: `make install PREFIX=$HOME/.local`.
+Потом проверьте окружение: `adbmount doctor`.
 
 ## Использование
 
-```bash
-adbmount up            # внутренняя память → ~/mnt/android, SD-карта → ~/mnt/sdcard (находится сама)
-adbmount up --ro       # то же, но только чтение (безопасно для просмотра и сканирования)
-adbmount up --only sdcard
-adbmount status
-adbmount down
+```
+adbmount up [--ro] [--only android|sdcard]   монтирует внутреннюю память → ~/mnt/android, SD-карту → ~/mnt/sdcard
+adbmount down [имя...]                       отмонтирует (по умолчанию всё)
+adbmount status                              что смонтировано
+adbmount log [-f] android|sdcard             лог демона
+adbmount devices                             телефоны, способ подключения, свободное место
+adbmount ls [-l] [ПУТЬ]                      содержимое папки на телефоне
+adbmount pull [-n] [-f] [-j N] ТЕЛЕФОН... ЛОКАЛЬНО
+adbmount push [-n] [-f] [-j N] ЛОКАЛЬНО... ТЕЛЕФОН
+adbmount wifi enable|connect|pair|scan|disconnect|usb
+adbmount doctor                              диагностика окружения
 ```
 
-pid-файлы лежат в `~/Library/Caches/adbfs/run`, рядом же логи (`adbmount log sdcard`). Каталог
-монтирования меняется через `ADBMOUNT_DIR=/some/dir`. Если подключено несколько устройств, выберите
-нужное: `ANDROID_SERIAL=<serial> adbmount up` (серийники покажет `adb devices`).
+Пути на телефоне понимают сокращения: `sd:Music` — папка `Music` на SD-карте (карта находится
+сама), `int:DCIM` — `/sdcard/DCIM`; абсолютные пути вроде `/storage/emulated/0/Download` тоже работают.
 
-Прямой запуск:
+Точки монтирования лежат в `~/mnt` (меняется через `ADBMOUNT_DIR=/some/dir`), состояние и логи
+демонов — в `~/Library/Caches/adbfs/run`. Если подключено несколько устройств, выберите нужное через
+`-s SERIAL` или `ANDROID_SERIAL=…` (серийники покажет `adbmount devices`).
+
+> **Важно:** режим чтения-записи меняет память телефона напрямую. Если нужно только посмотреть,
+> начните с `--ro`, а незаменимое сначала скопируйте. ПО предоставляется «как есть», см. [LICENSE](LICENSE).
+
+### Копирование без монтирования
 
 ```bash
-adbfs -root /storage/ABCD-1234 -mount ~/mnt/sdcard -volname SDCard [-ro] [-allow-junk]
+adbmount pull sd:Music ~/Music        # → ~/Music/Music (правила rsync: без слэша имя папки сохраняется)
+adbmount pull sd:Music/ ~/Music       # → содержимое Music прямо в ~/Music
+adbmount push -n ~/Photos/ int:Backup # пробный прогон
+adbmount push ~/Photos/ int:Backup
+```
+
+* Файлы, у которых размер и время изменения (±2 с — точность FAT/exFAT) совпадают, пропускаются,
+  поэтому повторный запуск копирует только изменившееся. `-f` копирует всё.
+* Файлы передаются параллельно (`-j`, по умолчанию 4); каждый пишется под временным именем,
+  переименовывается по завершении, затем проверяется размер. Неудавшиеся файлы повторяются один раз,
+  а в конце перечисляются, и команда завершается с ненулевым кодом.
+* `push` не отправляет macOS-файлы `._*` / `.DS_Store` (`--junk`, чтобы включить).
+* Ничего и нигде не удаляется.
+
+### Wi-Fi вместо кабеля
+
+adb умеет работать с телефоном по сети, и всё перечисленное выше (монтирование, `pull`, `push`)
+работает без изменений с Wi-Fi-серийником. Телефон и Mac должны быть в одной сети.
+
+```bash
+# Вариант 1, любой Android: один раз подключите телефон кабелем
+adbmount wifi enable                 # переключает adb на TCP и подключается; потом можно отсоединить кабель
+adbmount up -s 192.168.1.20:5555
+
+# Вариант 2, Android 11+, вообще без кабеля: Для разработчиков → Отладка по Wi-Fi
+adbmount wifi pair 192.168.1.20:41233 123456    # адрес и код из «Подключить с помощью кода»
+adbmount wifi connect 192.168.1.20:37001        # адрес с главного экрана «Отладка по Wi-Fi»
+adbmount wifi scan                              # или найти телефоны, которые сами себя объявляют
+
+adbmount wifi disconnect             # разорвать все сетевые подключения
+adbmount wifi usb                    # вернуть телефон в режим «только USB»
+```
+
+Скорость будет ниже и нестабильнее, чем по USB (всё решает качество Wi-Fi); монтирование
+переживает короткие обрывы благодаря повторам. Пока кабель вставлен, телефон виден дважды (по
+каждому транспорту): выберите один через `-s`.
+
+### Демон
+
+`adbmount up` запускает в фоне по одному `adbmount serve` на каждый том. Его можно запустить вручную:
+
+```bash
+adbmount serve -root /storage/ABCD-1234 -mount ~/mnt/sdcard -volname SDCard [-ro] [-allow-junk] [-serial S]
 ```
 
 | флаг | значение |
@@ -69,9 +125,6 @@ adbfs -root /storage/ABCD-1234 -mount ~/mnt/sdcard -volname SDCard [-ro] [-allow
 | `-volname` | имя тома в Finder |
 
 `ADBFS_TRACE=1` включает лог каждой операции с временем выполнения.
-
-> **Важно:** режим чтения-записи меняет память телефона напрямую. Если нужно только посмотреть,
-> начните с `--ro`, а незаменимое сначала скопируйте. ПО предоставляется «как есть», см. [LICENSE](LICENSE).
 
 ## Как это работает
 
@@ -124,16 +177,21 @@ back-pressure, падают соответствующие тесты.
 
 | файл | роль |
 |---|---|
-| `main.go` | флаги, чистка временных каталогов, монтирование |
+| `serve.go` | демон: флаги, чистка временных каталогов, монтирование |
 | `fs.go` | FUSE-файловая система (кэш, скачивание, запись) |
 | `adb.go` | интерфейс `device` и его реализация через adb, повторы |
 | `fs_test.go`, `main_test.go` | устройство в памяти и тесты |
-| `adbmount` | скрипт монтирования/отмонтирования/статуса |
+| `main.go`, `cli.go` | диспетчер команд и помощники для флагов |
+| `mount.go` | `up` / `down` / `status` / `log`: запуск и остановка демонов |
+| `device.go`, `doctor.go` | выбор устройства, `devices`, `doctor` |
+| `wifi.go` | подкоманды `wifi` |
+| `transfer.go` | `ls`, `pull`, `push`: планирование, параллельное копирование, прогресс |
+| `testdata/fakeadb` | поддельный `adb` поверх локальной папки для end-to-end тестов |
 
 ## Если что-то не работает
 
 * **Пустой маунт или `Resource busy` при отмонтировании**: `adbmount down` (принудительно
-  отмонтирует и убьёт только запущенные им процессы). Никогда не используйте `pkill -f adbfs`: он
+  отмонтирует и убьёт только запущенные им процессы). Никогда не используйте `pkill -f "adbmount serve"`: он
   заденет и второй маунт.
 * **`no phone visible`**: проверьте кабель, включите отладку по USB и подтвердите запрос
   авторизации на телефоне; `adb devices` должен показывать `device`, а не `unauthorized`.
@@ -142,6 +200,8 @@ back-pressure, падают соответствующие тесты.
 * **Созданная на телефоне папка не видна**: подождите до 10 с (кэш листинга).
 * **`cannot stat /storage/... on device`**: карта не смонтирована/не разблокирована на телефоне
   или изменился UUID; реальное имя покажет `adb shell ls /storage`.
+* **`adbmount wifi enable` не подключается**: телефон и Mac должны быть в одной сети (гостевой
+  Wi-Fi с изоляцией клиентов блокирует), попробуйте сопряжение по коду или `adb kill-server`.
 * **Сборка падает с `fuse.h not found`**: установите FUSE-T (`brew install --cask fuse-t`).
 
 ## Лицензия

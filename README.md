@@ -10,52 +10,109 @@ volume over **adb**. It needs no kernel extension (it uses [FUSE-T](https://www.
 nothing on the phone except USB debugging.
 
 ```
-phone ──USB── adb ──► adbfs (Go, cgofuse) ──► FUSE-T (NFS) ──► Finder, Python, ffmpeg, foobar2000…
+phone ──USB/Wi-Fi── adb ──► adbmount serve (Go, cgofuse) ──► FUSE-T (NFS) ──► Finder, Python, ffmpeg, foobar2000…
 ```
 
-The repository contains two things: `adbfs`, the filesystem daemon (Go), and `adbmount`, a small
-shell helper that finds the SD card, starts one `adbfs` per volume and unmounts them cleanly.
+One binary does everything: `adbmount up` mounts the phone, `adbmount pull/push` copy
+folders rsync-style, `adbmount wifi` cuts the cable, `adbmount doctor` tells you what is wrong.
 
 ## Requirements
 
 * macOS (Apple Silicon or Intel)
 * [FUSE-T](https://www.fuse-t.org/) and Android platform tools
-* Go (only to build; the version in `go.mod`)
+* Go (only to build from source; the version in `go.mod`)
 * An Android phone with **USB debugging** enabled and the computer authorized
 
 ## Install
 
 ```bash
 brew install --cask fuse-t        # asks for your admin password
-brew install android-platform-tools go
+brew install android-platform-tools
 
-git clone https://github.com/ischademadda/adbmount.git
-cd adbmount
-make build                        # builds ./adbfs
-sudo make install                 # optional: copies adbfs + adbmount to /usr/local/bin
+# a) prebuilt universal binary (Apple Silicon + Intel) from the latest release
+curl -L https://github.com/ischademadda/adbmount/releases/latest/download/adbmount-macos-universal.tar.gz | tar xz
+xattr -d com.apple.quarantine adbmount 2>/dev/null; sudo mv adbmount /usr/local/bin/
+
+# b) from source
+brew install go
+git clone https://github.com/ischademadda/adbmount.git && cd adbmount
+make build && sudo make install   # or: make install PREFIX=$HOME/.local
 ```
 
-`adbmount` looks for `adbfs` next to itself (override with `ADBFS_BIN=/path/to/adbfs`), so keep the
-two files together. Use `make install PREFIX=$HOME/.local` to install without sudo.
+Then check the setup: `adbmount doctor`.
 
 ## Usage
 
-```bash
-adbmount up            # internal storage → ~/mnt/android, SD card → ~/mnt/sdcard (auto-detected)
-adbmount up --ro       # same, but read-only (safe for scanning/browsing)
-adbmount up --only sdcard
-adbmount status
-adbmount down
+```
+adbmount up [--ro] [--only android|sdcard]   mount internal storage → ~/mnt/android, SD card → ~/mnt/sdcard
+adbmount down [name...]                      unmount (everything by default)
+adbmount status                              what is mounted
+adbmount log [-f] android|sdcard             daemon log of a mount
+adbmount devices                             phones, how they are connected, free space
+adbmount ls [-l] [PATH]                      list a folder on the phone
+adbmount pull [-n] [-f] [-j N] REMOTE... LOCAL
+adbmount push [-n] [-f] [-j N] LOCAL... REMOTE
+adbmount wifi enable|connect|pair|scan|disconnect|usb
+adbmount doctor                              diagnose the setup
 ```
 
-`adbmount` keeps pid files in `~/Library/Caches/adbfs/run` and logs next to them
-(`adbmount log sdcard`). Change the mount root with `ADBMOUNT_DIR=/some/dir`. With several devices
-attached, pick one with `ANDROID_SERIAL=<serial> adbmount up` (see `adb devices`).
+Phone paths accept shortcuts: `sd:Music` is the SD card's `Music` folder (the card is detected
+automatically), `int:DCIM` is `/sdcard/DCIM`; absolute paths like `/storage/emulated/0/Download` work too.
 
-Direct use:
+Mount points live in `~/mnt` (change with `ADBMOUNT_DIR=/some/dir`). Daemon state and logs are in
+`~/Library/Caches/adbfs/run`. With several devices attached, choose one with `-s SERIAL` or
+`ANDROID_SERIAL=…` (see `adbmount devices`).
+
+> **Note:** read-write mode modifies the phone's storage directly. Start with `--ro` if you only
+> want to look around, and keep a backup of anything you cannot lose. The software is provided
+> as-is, see [LICENSE](LICENSE).
+
+### Copying without mounting
 
 ```bash
-adbfs -root /storage/ABCD-1234 -mount ~/mnt/sdcard -volname SDCard [-ro] [-allow-junk]
+adbmount pull sd:Music ~/Music        # → ~/Music/Music (rsync rules: no trailing slash keeps the folder name)
+adbmount pull sd:Music/ ~/Music       # → contents of Music straight into ~/Music
+adbmount push -n ~/Photos/ int:Backup # dry run
+adbmount push ~/Photos/ int:Backup
+```
+
+* Files whose size and modification time (±2 s, FAT/exFAT precision) already match are skipped,
+  so repeating a command only copies what changed. `-f` copies everything.
+* Several files are transferred in parallel (`-j`, default 4); each one is written to a temporary
+  name and renamed when complete, and its size is checked afterwards. Failed files are retried
+  once and listed at the end with a non-zero exit status.
+* `push` does not send macOS `._*` / `.DS_Store` files (`--junk` to include them).
+* Nothing is ever deleted on either side.
+
+### Wi-Fi instead of a cable
+
+adb can talk to the phone over the network, and everything above (mounting, `pull`, `push`) works
+unchanged with a Wi-Fi serial. The phone and the Mac must be on the same network.
+
+```bash
+# Option 1, any Android: plug the phone in once
+adbmount wifi enable                 # switches adb to TCP and connects; unplug the cable afterwards
+adbmount up -s 192.168.1.20:5555
+
+# Option 2, Android 11+, no cable at all: Developer options → Wireless debugging
+adbmount wifi pair 192.168.1.20:41233 123456    # address and code from "Pair device with pairing code"
+adbmount wifi connect 192.168.1.20:37001        # address from the main Wireless debugging screen
+adbmount wifi scan                              # or find phones advertising themselves
+
+adbmount wifi disconnect             # drop all network connections
+adbmount wifi usb                    # put a phone back to USB-only mode
+```
+
+Expect lower and less steady throughput than USB (Wi-Fi quality dominates); the mount keeps
+working through short hiccups thanks to the retry logic. With the cable still plugged in the
+phone shows up twice, once per transport: pick one with `-s`.
+
+### The daemon
+
+`adbmount up` starts one background `adbmount serve` per volume. You can run it yourself:
+
+```bash
+adbmount serve -root /storage/ABCD-1234 -mount ~/mnt/sdcard -volname SDCard [-ro] [-allow-junk] [-serial S]
 ```
 
 | flag | meaning |
@@ -69,10 +126,6 @@ adbfs -root /storage/ABCD-1234 -mount ~/mnt/sdcard -volname SDCard [-ro] [-allow
 | `-volname` | name shown in Finder |
 
 Set `ADBFS_TRACE=1` to log every operation with its duration.
-
-> **Note:** read-write mode modifies the phone's storage directly. Start with `--ro` if you only
-> want to look around, and keep a backup of anything you cannot lose. The software is provided
-> as-is, see [LICENSE](LICENSE).
 
 ## How it works
 
@@ -125,22 +178,29 @@ specific tests fail).
 
 | file | role |
 |---|---|
-| `main.go` | flags, temp-dir hygiene, mount |
+| `serve.go` | the daemon: flags, temp-dir hygiene, mount |
 | `fs.go` | the FUSE filesystem (cache, downloads, write-back) |
 | `adb.go` | `device` interface + adb implementation, retries |
 | `fs_test.go`, `main_test.go` | in-memory device + tests |
-| `adbmount` | mount/unmount/status helper |
+| `main.go`, `cli.go` | command dispatch and flag helpers |
+| `mount.go` | `up` / `down` / `status` / `log`: starts and stops daemons |
+| `device.go`, `doctor.go` | device selection, `devices`, `doctor` |
+| `wifi.go` | `wifi` subcommands |
+| `transfer.go` | `ls`, `pull`, `push`: planning, parallel copy, progress |
+| `testdata/fakeadb` | a fake `adb` serving a local folder, used by the end-to-end tests |
 
 ## Troubleshooting
 
 * **Mount is empty / `Resource busy` on unmount**: `adbmount down` (force-unmounts and kills only
-  the pids it started). Never `pkill -f adbfs`: it also matches the other mount.
+  the pids it started). Never `pkill -f "adbmount serve"`: it also matches the other mount.
 * **`no phone visible`**: check the cable, enable USB debugging and accept the authorization prompt
   on the phone; `adb devices` must show `device`, not `unauthorized`.
 * **Finder is slow on huge folders**: use `--ro` while browsing; every directory is one adb call.
 * **A folder created on the phone does not show up**: wait ≤ 10 s (listing cache).
 * **`cannot stat /storage/... on device`**: the card is not mounted/unlocked on the phone, or the
   UUID changed; `adb shell ls /storage` shows the real name.
+* **`adbmount wifi enable` cannot connect**: the phone and the Mac must share a network (guest
+  Wi-Fi with client isolation blocks it); try the pairing flow, or `adb kill-server` and retry.
 * **Build fails with `fuse.h` not found**: install FUSE-T (`brew install --cask fuse-t`).
 
 ## License

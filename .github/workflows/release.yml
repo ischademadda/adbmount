@@ -1,0 +1,35 @@
+name: release
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Install FUSE-T (universal libfuse-t, headers for cgo)
+        run: brew install --cask fuse-t
+      - run: make check
+      - name: Build universal binary
+        run: |
+          set -euo pipefail
+          for arch in arm64 amd64; do
+            CGO_ENABLED=1 GOARCH=$arch go build -ldflags "-X main.version=${GITHUB_REF_NAME}" -o adbmount-$arch .
+          done
+          lipo -create -output adbmount adbmount-arm64 adbmount-amd64
+          lipo -archs adbmount
+          tar -czf adbmount-macos-universal.tar.gz adbmount LICENSE README.md
+          shasum -a 256 adbmount-macos-universal.tar.gz | tee checksums.txt
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --generate-notes --title "$GITHUB_REF_NAME" \
+            adbmount-macos-universal.tar.gz checksums.txt
