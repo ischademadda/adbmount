@@ -1,0 +1,22 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Install FUSE-T (headers needed by cgofuse)
+        run: brew install --cask fuse-t
+      - run: make check
+      - name: Lint adbmount
+        run: |
+          brew install shellcheck
+          bash -n adbmount
+          shellcheck adbmount
