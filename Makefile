@@ -14,3 +14,7 @@ install: build
 	install -m 755 adbmount $(PREFIX)/bin/
 clean:
 	rm -f adbmount
+
+.PHONY: e2e-mount
+e2e-mount:
+	./scripts/e2e-mount.sh

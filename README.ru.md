@@ -167,7 +167,8 @@ adbmount serve -root /storage/ABCD-1234 -mount ~/mnt/sdcard -volname SDCard [-ro
 ## Разработка
 
 ```bash
-make check      # go vet + go test + сборка
+make check        # go vet + go test (включая end-to-end CLI на поддельном adb) + сборка
+make e2e-mount    # настоящее FUSE-T монтирование на поддельном adb (только локально)
 ```
 
 `device` (в `adb.go`) — единственное, что файловая система знает о телефоне. В `fs_test.go` он

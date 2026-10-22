@@ -168,7 +168,8 @@ scan of ~50 FLAC files ≈ 16 s (≈ 0.3 s/file, dominated by one adb round trip
 ## Development
 
 ```bash
-make check      # go vet + go test + build
+make check        # go vet + go test (incl. CLI end-to-end on a fake adb) + build
+make e2e-mount    # real FUSE-T mount against the fake adb (local only, needs FUSE-T)
 ```
 
 `device` (in `adb.go`) is the only thing the filesystem knows about the phone. `fs_test.go` implements
