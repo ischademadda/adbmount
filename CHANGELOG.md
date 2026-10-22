@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 - 2026-10-23
 
 - Interactive console UI (`adbmount` / `adbmount tui`): live device and mount status, mount and
   unmount, Wi-Fi, settings saved to a config file that `up` also honours (`--rw` to override).
