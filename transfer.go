@@ -4,12 +4,14 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"path"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 )
 
@@ -346,6 +348,17 @@ func execute(pl *plan, workers int, cp copyFunc) (failed []string) {
 
 const partSuffix = ".adbmount-part"
 
+// inflight tracks half-written temporary files so an interrupt can remove them
+// instead of leaving litter on the Mac or on the phone.
+var inflight sync.Map // temp path -> func() that removes it
+
+func cleanupInflight() {
+	inflight.Range(func(k, v any) bool {
+		v.(func())()
+		return true
+	})
+}
+
 func pullFile(dev device) copyFunc {
 	return func(j job, p *progress) (err error) {
 		for attempt := 0; attempt < 2; attempt++ {
@@ -368,6 +381,8 @@ func pullOnce(dev device, j job, p *progress) error {
 	if err != nil {
 		return err
 	}
+	inflight.Store(tmp, func() { os.Remove(tmp) })
+	defer inflight.Delete(tmp)
 	cr := &countReader{r: rc, p: p}
 	n, err := io.Copy(f, cr)
 	if cerr := f.Close(); err == nil {
@@ -403,6 +418,9 @@ func pushOnce(dev device, j job, p *progress) error {
 		return err
 	}
 	defer f.Close()
+	tmp := uploadTmp(j.dst)
+	inflight.Store(tmp, func() { dev.remove(tmp) })
+	defer inflight.Delete(tmp)
 	cr := &countReader{r: f, p: p}
 	err = dev.upload(cr, j.dst, j.mtime)
 	if err == nil {
@@ -521,6 +539,14 @@ func runTransfer(dir string, args []string) error {
 			return err
 		}
 	}
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-sig
+		cleanupInflight()
+		fmt.Fprintln(os.Stderr, "\ninterrupted: partial files removed; run the same command again to resume (finished files are skipped)")
+		os.Exit(130)
+	}()
 	if failed := execute(pl, *workers, cp); len(failed) > 0 {
 		for _, f := range failed {
 			fmt.Fprintln(os.Stderr, "  failed:", f)

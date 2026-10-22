@@ -199,3 +199,22 @@ func TestMkdirAllRefusesFileInTheWay(t *testing.T) {
 		t.Error("expected error when a file blocks the path")
 	}
 }
+
+func TestInterruptCleanupRemovesInflightFiles(t *testing.T) {
+	dev := newMemDevice()
+	dev.put("/sdcard/.x.adbfs-tmp", []byte("half"))
+	local := filepath.Join(t.TempDir(), "y"+partSuffix)
+	os.WriteFile(local, []byte("half"), 0o644)
+	inflight.Store("remote", func() { dev.remove(uploadTmp("/sdcard/x")) })
+	inflight.Store(local, func() { os.Remove(local) })
+	defer inflight.Delete("remote")
+	defer inflight.Delete(local)
+
+	cleanupInflight()
+	if dev.has("/sdcard/.x.adbfs-tmp") {
+		t.Error("remote temp file survived cleanup")
+	}
+	if _, err := os.Stat(local); err == nil {
+		t.Error("local part file survived cleanup")
+	}
+}

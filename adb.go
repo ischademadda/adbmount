@@ -252,8 +252,13 @@ func (a *adb) open(p string, off, n int64) (io.ReadCloser, error) {
 
 // ---- mutations --------------------------------------------------------------
 
+// uploadTmp is where upload stages remote before the atomic rename.
+func uploadTmp(remote string) string {
+	return path.Dir(remote) + "/." + path.Base(remote) + ".adbfs-tmp"
+}
+
 func (a *adb) upload(r io.Reader, remote string, mtime int64) error {
-	tmp := path.Dir(remote) + "/." + path.Base(remote) + ".adbfs-tmp"
+	tmp := uploadTmp(remote)
 	script := fmt.Sprintf("cat > %s && mv -f %s %s", shQuote(tmp), shQuote(tmp), shQuote(remote))
 	if mtime > 0 {
 		script += fmt.Sprintf(" && touch -d @%d %s", mtime, shQuote(remote))
