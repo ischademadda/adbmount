@@ -1,0 +1,8 @@
+#!/bin/sh
+# toybox `touch -d @EPOCH FILE` on top of BSD touch
+if [ "$1" = "-d" ]; then
+  ts=$(date -r "${2#@}" +%Y%m%d%H%M.%S)
+  shift 2
+  exec /usr/bin/touch -t "$ts" "$@"
+fi
+exec /usr/bin/touch "$@"

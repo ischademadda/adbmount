@@ -1,0 +1,58 @@
+#!/usr/bin/env python3
+"""A fake `adb` for tests: runs the phone-side shell snippets against a local
+directory tree ($FAKE_ADB_ROOT/sdcard, $FAKE_ADB_ROOT/storage/...), using toybox-style
+shims for stat/touch on macOS. Supports only what adbmount calls."""
+import os, subprocess, sys
+
+root = os.environ["FAKE_ADB_ROOT"]
+here = os.path.dirname(os.path.abspath(__file__))
+serials = os.environ.get("FAKE_ADB_SERIALS", "FAKE123").split(",")
+log = os.environ.get("FAKE_ADB_LOG")
+
+args = sys.argv[1:]
+if log:
+    with open(log, "a") as f:
+        f.write(" ".join(args) + "\n")
+if len(args) >= 2 and args[0] == "-s":
+    args = args[2:]
+cmd, rest = (args[0], args[1:]) if args else ("", [])
+
+def run_script(script):
+    if script.startswith("getprop"):
+        print("Fake\nPhone 1\n14")
+        return 0
+    if script.startswith("ip -f inet addr show wlan0"):
+        print("22: wlan0: <UP>\n    inet 192.168.7.42/24 brd 192.168.7.255 scope global wlan0")
+        return 0
+    s = script.replace("/sdcard", root + "/sdcard").replace("/storage", root + "/storage")
+    env = dict(os.environ, PATH=here + "/shims:" + os.environ["PATH"])
+    if "stat" in script and "cat" not in script and "dd " not in script:
+        p = subprocess.run(["/bin/sh", "-c", s], env=env, stdout=subprocess.PIPE)
+        sys.stdout.buffer.write(p.stdout.replace(root.encode(), b""))
+        sys.stdout.flush()
+        return p.returncode
+    return subprocess.run(["/bin/sh", "-c", s], env=env).returncode
+
+if cmd == "devices":
+    print("List of devices attached")
+    for i, s in enumerate(serials):
+        print(f"{s:<22} device usb:1-{i} product:fake model:Fake_Phone device:fake transport_id:{i+1}")
+elif cmd == "get-state":
+    print("device")
+elif cmd == "version":
+    print("Android Debug Bridge version 1.0.41 (fake)")
+elif cmd in ("exec-out", "shell"):
+    sys.exit(run_script(rest[0]))
+elif cmd == "tcpip":
+    print(f"restarting in TCP mode port: {rest[0]}")
+elif cmd == "connect":
+    print(f"connected to {rest[0]}")
+elif cmd == "usb":
+    print("restarting in USB mode")
+elif cmd == "disconnect":
+    print("disconnected everything" if not rest else f"disconnected {rest[0]}")
+elif cmd == "mdns":
+    print("List of discovered mdns services")
+else:
+    print(f"fakeadb: unsupported command {cmd}", file=sys.stderr)
+    sys.exit(1)

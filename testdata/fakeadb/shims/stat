@@ -1,0 +1,6 @@
+#!/bin/sh
+# toybox `stat -L -c '%f|%s|%Y|%n'` and `stat -f -c ...` on top of BSD stat
+if [ "$1" = "-f" ]; then echo "4096 1000000 500000 500000"; exit 0; fi
+shift 2   # -L -c
+shift     # format (only the one adbmount uses is supported)
+for f in "$@"; do /usr/bin/stat -L -f '%Xp|%z|%m|%N' "$f" || exit 1; done
