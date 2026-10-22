@@ -8,7 +8,7 @@ ROOT="$(mktemp -d)"; MNT="$(mktemp -d)"
 trap '"$BIN" down >/dev/null 2>&1 || true; rm -rf "$ROOT" "$MNT"' EXIT
 mkdir -p "$ROOT/sdcard/Music" "$ROOT/storage/ABCD-1234" "$ROOT/storage/emulated"
 echo hello > "$ROOT/sdcard/Music/a.txt"; echo card > "$ROOT/storage/ABCD-1234/c.txt"
-export FAKE_ADB_ROOT="$ROOT" ADBMOUNT_DIR="$MNT" PATH="$PWD/testdata/fakeadb:$PATH"
+export FAKE_ADB_ROOT="$ROOT" ADBMOUNT_DIR="$MNT" ADBMOUNT_STATE_DIR="$MNT/.state" ADBMOUNT_CONFIG="$MNT/config.json" PATH="$PWD/testdata/fakeadb:$PATH"
 
 "$BIN" up
 [ "$(cat "$MNT/android/Music/a.txt")" = hello ] || { echo "FAIL read"; exit 1; }

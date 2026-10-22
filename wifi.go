@@ -168,31 +168,40 @@ func wifiEnable(bin string, args []string) error {
 	if _, err := parseInterspersed(fl, args); err != nil {
 		return err
 	}
-	a, d, err := connectDevice(*serial)
+	a, _, err := connectDevice(*serial)
 	if err != nil {
 		return err
 	}
-	if d.isNetwork() {
-		return fail("%s is already connected over Wi-Fi", d.Serial)
+	target, err := enableWifi(a, *port)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("connected to %s\n\nYou can unplug the cable now. Use it with:\n  adbmount up -s %s\n", target, target)
+	fmt.Println("The setting lasts until the phone reboots; `adbmount wifi usb` reverts it.")
+	return nil
+}
+
+// enableWifi switches the (USB-connected) phone's adbd to TCP and connects to it.
+func enableWifi(a *adb, port int) (string, error) {
+	if netSerial.MatchString(a.serial) {
+		return "", fmt.Errorf("%s is already connected over Wi-Fi", a.serial)
 	}
 	ip := a.wlanIP()
 	if ip == "" {
-		return fail("could not find the phone's Wi-Fi address: is Wi-Fi on and connected?")
+		return "", fmt.Errorf("could not find the phone's Wi-Fi address: is Wi-Fi on and connected?")
 	}
-	target := fmt.Sprintf("%s:%d", ip, *port)
-	if out, err := adbOutput(bin, "-s", d.Serial, "tcpip", fmt.Sprint(*port)); err != nil {
-		return fail("adb tcpip: %s", out)
+	target := fmt.Sprintf("%s:%d", ip, port)
+	if out, err := adbOutput(a.bin, "-s", a.serial, "tcpip", fmt.Sprint(port)); err != nil {
+		return "", fmt.Errorf("adb tcpip: %s", out)
 	}
 	// adbd restarts in TCP mode; give it a moment before connecting.
 	var out string
 	for i := 0; i < 10; i++ {
 		time.Sleep(time.Second)
 		var ok bool
-		if out, ok = adbConnect(bin, target); ok {
-			fmt.Printf("%s\n\nYou can unplug the cable now. Use it with:\n  adbmount up -s %s\n", out, target)
-			fmt.Println("The setting lasts until the phone reboots; `adbmount wifi usb` reverts it.")
-			return nil
+		if out, ok = adbConnect(a.bin, target); ok {
+			return target, nil
 		}
 	}
-	return fail("could not connect to %s: %s\n(the phone and this Mac must be on the same network)", target, out)
+	return "", fmt.Errorf("could not connect to %s: %s\n(the phone and this Mac must be on the same network)", target, out)
 }

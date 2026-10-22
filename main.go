@@ -31,6 +31,7 @@ type command struct {
 
 func commands() []command {
 	return []command{
+		{"tui", "", "interactive console UI: live status, mount, Wi-Fi, settings", runTUI},
 		{"up", "[--ro] [--only android|sdcard] [--open] [-s SERIAL]", "mount internal storage and SD card", runUp},
 		{"down", "[android|sdcard ...]", "unmount (everything by default)", runDown},
 		{"status", "", "show what is mounted", runStatus},
@@ -53,7 +54,7 @@ func usage() {
 	for _, c := range commands() {
 		fmt.Fprintf(&b, "  %-9s %s\n", c.name, c.short)
 	}
-	b.WriteString("\nRun `adbmount <command> -h` for the options of a command.\n")
+	b.WriteString("\nRun `adbmount` without arguments in a terminal for the interactive UI.\nRun `adbmount <command> -h` for the options of a command.\n")
 	b.WriteString("PATH arguments accept `sd:` (SD card root) and `int:` (internal storage) prefixes.\n")
 	b.WriteString("Select a device with -s SERIAL or ANDROID_SERIAL; Wi-Fi devices look like 192.168.1.20:5555.\n")
 	fmt.Fprint(os.Stderr, b.String())
@@ -61,6 +62,14 @@ func usage() {
 
 func main() {
 	if len(os.Args) < 2 {
+		// A bare `adbmount` in a terminal opens the interactive UI.
+		if fi, err := os.Stdout.Stat(); err == nil && fi.Mode()&os.ModeCharDevice != 0 {
+			if err := runTUI(nil); err != nil {
+				fmt.Fprintln(os.Stderr, "adbmount:", err)
+				os.Exit(1)
+			}
+			return
+		}
 		usage()
 		os.Exit(2)
 	}

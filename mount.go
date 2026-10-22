@@ -24,11 +24,17 @@ type mountState struct {
 var defaultMounts = []string{"sdcard", "android"}
 
 func stateDir() string {
+	if d := os.Getenv("ADBMOUNT_STATE_DIR"); d != "" { // tests and sandboxes
+		return d
+	}
 	return filepath.Join(tempBase(), "run")
 }
 
 func mountBase() string {
 	if d := os.Getenv("ADBMOUNT_DIR"); d != "" {
+		return d
+	}
+	if d := loadConfig().MountDir; d != "" {
 		return d
 	}
 	home, _ := os.UserHomeDir()
@@ -130,18 +136,18 @@ func tailFile(path string, n int) string {
 	return strings.Join(lines, "\n")
 }
 
-func startMount(a *adb, name, root, volname string, ro bool) error {
+// startMount launches a daemon for one volume and returns a one-line result.
+func startMount(a *adb, name, root, volname string, ro bool) (string, error) {
 	mnt := mountPointOf(name)
 	if isMounted(mnt) {
-		fmt.Printf("  %s: already mounted (%s)\n", name, mnt)
-		return nil
+		return fmt.Sprintf("%s: already mounted (%s)", name, mnt), nil
 	}
 	if err := os.MkdirAll(stateDir(), 0o755); err != nil {
-		return err
+		return "", err
 	}
 	exe, err := os.Executable()
 	if err != nil {
-		return err
+		return "", err
 	}
 	args := []string{"serve", "-root", root, "-mount", mnt, "-volname", volname, "-serial", a.serial, "-adb", a.bin}
 	if ro {
@@ -149,14 +155,14 @@ func startMount(a *adb, name, root, volname string, ro bool) error {
 	}
 	logf, err := os.Create(logPath(name))
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer logf.Close()
 	c := exec.Command(exe, args...)
 	c.Stdout, c.Stderr = logf, logf
 	c.SysProcAttr = &syscall.SysProcAttr{Setsid: true} // survive the terminal that started us
 	if err := c.Start(); err != nil {
-		return err
+		return "", err
 	}
 	exited := make(chan struct{})
 	go func() { c.Wait(); close(exited) }()
@@ -168,20 +174,20 @@ func startMount(a *adb, name, root, volname string, ro bool) error {
 			if ro {
 				mode = "read-only"
 			}
-			fmt.Printf("  %s: %s → %s (%s)\n", name, root, mnt, mode)
-			return nil
+			return fmt.Sprintf("%s: %s → %s (%s)", name, root, mnt, mode), nil
 		}
 		select {
 		case <-exited:
 			os.Remove(statePath(name))
-			return fmt.Errorf("%s: adbmount serve exited during startup:\n%s", name, tailFile(logPath(name), 5))
+			return "", fmt.Errorf("%s: adbmount serve exited during startup:\n%s", name, tailFile(logPath(name), 5))
 		case <-time.After(500 * time.Millisecond):
 		}
 	}
-	return fmt.Errorf("%s: not mounted after 20 s (log: %s)", name, logPath(name))
+	return "", fmt.Errorf("%s: not mounted after 20 s (log: %s)", name, logPath(name))
 }
 
-func stopMount(name string) {
+// stopMount unmounts one volume, stops its daemon and returns a one-line result.
+func stopMount(name string) string {
 	mnt := mountPointOf(name)
 	s, haveState := loadState(name)
 	if haveState && s.Mount != "" {
@@ -205,24 +211,28 @@ func stopMount(name string) {
 	os.Remove(statePath(name))
 	switch {
 	case isMounted(mnt):
-		fmt.Printf("  %s: could NOT unmount (busy? close files on it and retry)\n", name)
+		return fmt.Sprintf("%s: could NOT unmount (busy? close files on it and retry)", name)
 	case was:
-		fmt.Printf("  %s: unmounted\n", name)
-	default:
-		fmt.Printf("  %s: not mounted\n", name)
+		return fmt.Sprintf("%s: unmounted", name)
 	}
+	return fmt.Sprintf("%s: not mounted", name)
 }
 
 // ---- commands ----------------------------------------------------------------
 
 func runUp(args []string) error {
 	fl := flagSetFor("up")
-	ro := fl.Bool("ro", false, "mount read-only")
+	cfg := loadConfig()
+	ro := fl.Bool("ro", cfg.ReadOnly, "mount read-only (default from config)")
+	rw := fl.Bool("rw", false, "mount read-write even if the config says read-only")
 	only := fl.String("only", "", "mount just `android` (internal storage) or `sdcard`")
-	open := fl.Bool("open", false, "open the mounted volumes in Finder")
+	open := fl.Bool("open", cfg.Open, "open the mounted volumes in Finder (default from config)")
 	serial := serialFlag(fl)
 	if _, err := parseInterspersed(fl, args); err != nil {
 		return err
+	}
+	if *rw {
+		*ro = false
 	}
 	if *only != "" && *only != "android" && *only != "sdcard" {
 		return fail("--only must be android or sdcard")
@@ -233,15 +243,19 @@ func runUp(args []string) error {
 	}
 	fmt.Printf("Mounting from %s (%s)%s:\n", d.Serial, d.transport(), map[bool]string{true: ", read-only"}[*ro])
 	if *only == "" || *only == "android" {
-		if err := startMount(a, "android", "/sdcard", "Android", *ro); err != nil {
+		msg, err := startMount(a, "android", "/sdcard", "Android", *ro)
+		if err != nil {
 			return err
 		}
+		fmt.Println("  " + msg)
 	}
 	if *only == "" || *only == "sdcard" {
 		if sd := a.sdCardRoot(); sd != "" {
-			if err := startMount(a, "sdcard", sd, "SDCard", *ro); err != nil {
+			msg, err := startMount(a, "sdcard", sd, "SDCard", *ro)
+			if err != nil {
 				return err
 			}
+			fmt.Println("  " + msg)
 		} else {
 			fmt.Println("  sdcard: no SD card found, skipping")
 		}
@@ -267,7 +281,7 @@ func runDown(args []string) error {
 	}
 	fmt.Println("Unmounting:")
 	for _, n := range names {
-		stopMount(n)
+		fmt.Println("  " + stopMount(n))
 	}
 	return nil
 }

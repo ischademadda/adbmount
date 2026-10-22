@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Interactive console UI (`adbmount` / `adbmount tui`): live device and mount status, mount and
+  unmount, Wi-Fi, settings saved to a config file that `up` also honours (`--rw` to override).
+
 ## 0.1.0 - 2026-10-23
 
 - Single `adbmount` binary with subcommands replaces the `adbfs` binary plus bash launcher.

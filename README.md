@@ -44,10 +44,41 @@ make build && sudo make install   # or: make install PREFIX=$HOME/.local
 
 Then check the setup: `adbmount doctor`.
 
+## Interactive UI
+
+Run `adbmount` with no arguments in a terminal (or `adbmount tui`):
+
+```
+adbmount v0.1.0
+
+Devices
+▸ ● ✓ PBYP8TRSZHUS9PEM   usb   connected   Xiaomi 23108RN04Y · Android 16
+
+Storage
+  internal  50.5 GiB free of 222.2 GiB
+  SD card   236.9 GiB free of 461.2 GiB  /storage/FEAB-4F2C
+
+Mounts
+▸ android  ~/mnt/android   mounted read-write
+  sdcard   ~/mnt/sdcard    not mounted
+
+Settings
+  [r] read-only mounts      off
+  [f] open Finder after up  off
+```
+
+The status refreshes every 2 seconds (device connected / unauthorized / offline, USB or Wi-Fi,
+free space, what is mounted). Keys: `↑↓` move, `tab` switch panel, `enter` mount/unmount the
+selected volume or choose a device, `a` mount all, `u` unmount all, `o` open in Finder,
+`c` connect over Wi-Fi (asks for `host[:port]`), `w` switch a USB phone to Wi-Fi, `x` disconnect a
+Wi-Fi device, `r` / `f` toggle the settings, `l` show the daemon log, `q` quit. Quitting leaves the
+mounts running. Settings are saved in `~/Library/Application Support/adbmount/config.json` and also
+become the defaults of `adbmount up` (`--rw` overrides read-only).
+
 ## Usage
 
 ```
-adbmount up [--ro] [--only android|sdcard] [--open]   mount internal storage → ~/mnt/android, SD card → ~/mnt/sdcard
+adbmount up [--ro|--rw] [--only android|sdcard] [--open]   mount internal storage → ~/mnt/android, SD card → ~/mnt/sdcard
 adbmount down [name...]                      unmount (everything by default)
 adbmount status                              what is mounted
 adbmount log [-f] android|sdcard             daemon log of a mount

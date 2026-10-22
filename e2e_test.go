@@ -40,6 +40,8 @@ func newE2E(t *testing.T) *e2e {
 		"PATH="+filepath.Join(wd, "testdata", "fakeadb")+":"+os.Getenv("PATH"),
 		"ANDROID_SERIAL=",
 		"ADBMOUNT_DIR="+filepath.Join(t.TempDir(), "mnt"),
+		"ADBMOUNT_STATE_DIR="+t.TempDir(),
+		"ADBMOUNT_CONFIG="+filepath.Join(t.TempDir(), "config.json"),
 	)
 	return &e2e{t: t, bin: bin, root: root, env: env}
 }
