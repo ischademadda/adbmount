@@ -54,6 +54,7 @@ adbmount pull [-n] [-f] [-j N] ТЕЛЕФОН... ЛОКАЛЬНО
 adbmount push [-n] [-f] [-j N] ЛОКАЛЬНО... ТЕЛЕФОН
 adbmount wifi enable|connect|pair|scan|disconnect|usb
 adbmount doctor                              диагностика окружения
+adbmount completion zsh|bash|fish            автодополнение (zsh: adbmount completion zsh > "${fpath[1]}/_adbmount")
 ```
 
 Пути на телефоне понимают сокращения: `sd:Music` — папка `Music` на SD-карте (карта находится

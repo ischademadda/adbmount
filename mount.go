@@ -219,6 +219,7 @@ func runUp(args []string) error {
 	fl := flagSetFor("up")
 	ro := fl.Bool("ro", false, "mount read-only")
 	only := fl.String("only", "", "mount just `android` (internal storage) or `sdcard`")
+	open := fl.Bool("open", false, "open the mounted volumes in Finder")
 	serial := serialFlag(fl)
 	if _, err := parseInterspersed(fl, args); err != nil {
 		return err
@@ -243,6 +244,13 @@ func runUp(args []string) error {
 			}
 		} else {
 			fmt.Println("  sdcard: no SD card found, skipping")
+		}
+	}
+	if *open {
+		for _, n := range defaultMounts {
+			if isMounted(mountPointOf(n)) {
+				exec.Command("open", mountPointOf(n)).Run()
+			}
 		}
 	}
 	return nil

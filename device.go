@@ -124,6 +124,61 @@ func listDevices(bin string) ([]devInfo, error) {
 	return parseDevices(out.String()), nil
 }
 
+// dedupeTransports asks each ready device for its hardware serial, but only when
+// there is more than one, so the common single-phone case costs nothing.
+func dedupeTransports(bin string, devs []devInfo) []devInfo {
+	ready := 0
+	for _, d := range devs {
+		if d.State == "device" {
+			ready++
+		}
+	}
+	if ready < 2 {
+		return devs
+	}
+	hw := map[string]string{}
+	for _, d := range devs {
+		if d.State != "device" {
+			continue
+		}
+		a := &adb{bin: bin, serial: d.Serial}
+		if out, err := a.run("getprop ro.serialno"); err == nil {
+			hw[d.Serial] = strings.TrimSpace(strings.ReplaceAll(string(out), "\r", ""))
+		}
+	}
+	return collapseSamePhone(devs, hw)
+}
+
+// collapseSamePhone drops the extra transports of one phone (USB plus Wi-Fi after
+// `wifi enable`), keeping the first listed one of each hardware serial, with USB
+// preferred. Devices whose serial is unknown are kept as they are.
+func collapseSamePhone(devs []devInfo, hw map[string]string) []devInfo {
+	rank := func(d devInfo) int {
+		if d.transport() == "usb" {
+			return 0
+		}
+		return 1
+	}
+	best := map[string]int{} // hardware serial -> index in out
+	var out []devInfo
+	for _, d := range devs {
+		id := hw[d.Serial]
+		if id == "" {
+			out = append(out, d)
+			continue
+		}
+		if i, ok := best[id]; ok {
+			if rank(d) < rank(out[i]) {
+				out[i] = d
+			}
+			continue
+		}
+		best[id] = len(out)
+		out = append(out, d)
+	}
+	return out
+}
+
 // connectDevice resolves serial (or the only device) and returns an adb handle bound to it.
 func connectDevice(serial string) (*adb, devInfo, error) {
 	bin, err := adbPath()
@@ -133,6 +188,9 @@ func connectDevice(serial string) (*adb, devInfo, error) {
 	devs, err := listDevices(bin)
 	if err != nil {
 		return nil, devInfo{}, err
+	}
+	if serial == "" {
+		devs = dedupeTransports(bin, devs)
 	}
 	d, err := pickDevice(devs, serial)
 	if err != nil {

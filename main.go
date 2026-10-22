@@ -31,7 +31,7 @@ type command struct {
 
 func commands() []command {
 	return []command{
-		{"up", "[--ro] [--only android|sdcard] [-s SERIAL]", "mount internal storage and SD card", runUp},
+		{"up", "[--ro] [--only android|sdcard] [--open] [-s SERIAL]", "mount internal storage and SD card", runUp},
 		{"down", "[android|sdcard ...]", "unmount (everything by default)", runDown},
 		{"status", "", "show what is mounted", runStatus},
 		{"log", "[-f] android|sdcard", "show the daemon log of a mount", runLog},
@@ -41,6 +41,7 @@ func commands() []command {
 		{"pull", "[-n] [-f] [-j N] REMOTE... LOCAL", "copy from the phone, skipping unchanged files", runPull},
 		{"push", "[-n] [-f] [-j N] LOCAL... REMOTE", "copy to the phone, skipping unchanged files", runPush},
 		{"doctor", "", "check that everything needed is installed and working", runDoctor},
+		{"completion", "zsh|bash|fish", "print a shell completion script", runCompletion},
 		{"serve", "-root DIR -mount DIR [...]", "run the filesystem daemon in the foreground (used by up)", runServe},
 		{"version", "", "print the version", func([]string) error { fmt.Println("adbmount", buildVersion()); return nil }},
 	}

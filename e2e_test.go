@@ -132,3 +132,24 @@ func TestE2EUsageErrors(t *testing.T) {
 		t.Errorf("pull with one arg: %v\n%s", err, out)
 	}
 }
+
+func TestE2ETwoTransportsOfOnePhoneAreNotAmbiguous(t *testing.T) {
+	e := newE2E(t)
+	os.WriteFile(filepath.Join(e.root, "sdcard", "f.txt"), []byte("x"), 0o644)
+	e.env = append(e.env, "FAKE_ADB_SERIALS=USB1,10.0.0.5:5555", "FAKE_ADB_SAME_PHONE=1")
+	if out := e.must("ls", "int:"); !strings.Contains(out, "f.txt") {
+		t.Errorf("one phone on two transports should just work:\n%s", out)
+	}
+}
+
+func TestE2ETwoDifferentPhonesAreAmbiguous(t *testing.T) {
+	e := newE2E(t)
+	e.env = append(e.env, "FAKE_ADB_SERIALS=PHONE_A,PHONE_B")
+	out, err := e.run("ls", "int:")
+	if err == nil || !strings.Contains(out, "several devices") || !strings.Contains(out, "PHONE_B") {
+		t.Errorf("want an ambiguity error listing both, got err=%v\n%s", err, out)
+	}
+	if out, err := e.run("ls", "-s", "PHONE_B", "int:"); err != nil {
+		t.Errorf("-s should resolve the ambiguity: %v\n%s", err, out)
+	}
+}

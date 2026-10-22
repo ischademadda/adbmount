@@ -144,3 +144,32 @@ func TestHumanSize(t *testing.T) {
 		}
 	}
 }
+
+func TestCollapseSamePhone(t *testing.T) {
+	wifi := devInfo{Serial: "10.0.0.2:5555", State: "device"}
+	usb := devInfo{Serial: "AAA", State: "device"}
+	other := devInfo{Serial: "BBB", State: "device"}
+	unknown := devInfo{Serial: "CCC", State: "device"}
+	hw := map[string]string{"10.0.0.2:5555": "SN1", "AAA": "SN1", "BBB": "SN2"}
+
+	got := collapseSamePhone([]devInfo{wifi, usb, other, unknown}, hw)
+	var serials []string
+	for _, d := range got {
+		serials = append(serials, d.Serial)
+	}
+	if !reflect.DeepEqual(serials, []string{"AAA", "BBB", "CCC"}) {
+		t.Errorf("got %v; want the USB transport of SN1, then BBB and CCC", serials)
+	}
+}
+
+func TestCompletionScripts(t *testing.T) {
+	for _, sh := range []string{"zsh", "bash", "fish"} {
+		s, err := completionScript(sh)
+		if err != nil || !strings.Contains(s, "wifi") || strings.Contains(s, "serve") {
+			t.Errorf("%s: err=%v\n%s", sh, err, s)
+		}
+	}
+	if _, err := completionScript("tcsh"); err == nil {
+		t.Error("unknown shell must fail")
+	}
+}

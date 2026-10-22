@@ -44,7 +44,7 @@ Then check the setup: `adbmount doctor`.
 ## Usage
 
 ```
-adbmount up [--ro] [--only android|sdcard]   mount internal storage → ~/mnt/android, SD card → ~/mnt/sdcard
+adbmount up [--ro] [--only android|sdcard] [--open]   mount internal storage → ~/mnt/android, SD card → ~/mnt/sdcard
 adbmount down [name...]                      unmount (everything by default)
 adbmount status                              what is mounted
 adbmount log [-f] android|sdcard             daemon log of a mount
@@ -54,6 +54,7 @@ adbmount pull [-n] [-f] [-j N] REMOTE... LOCAL
 adbmount push [-n] [-f] [-j N] LOCAL... REMOTE
 adbmount wifi enable|connect|pair|scan|disconnect|usb
 adbmount doctor                              diagnose the setup
+adbmount completion zsh|bash|fish            shell completion (zsh: adbmount completion zsh > "${fpath[1]}/_adbmount")
 ```
 
 Phone paths accept shortcuts: `sd:Music` is the SD card's `Music` folder (the card is detected
