@@ -26,8 +26,14 @@ folders rsync-style, `adbmount wifi` cuts the cable, `adbmount doctor` tells you
 ## Install
 
 ```bash
-brew install --cask fuse-t        # asks for your admin password
-brew install android-platform-tools
+# Homebrew (installs FUSE-T and Android platform-tools too; FUSE-T asks for your admin password)
+brew install --cask ischademadda/tap/adbmount
+```
+
+Without Homebrew:
+
+```bash
+brew install --cask fuse-t android-platform-tools
 
 # a) prebuilt universal binary (Apple Silicon + Intel) from the latest release
 curl -L https://github.com/ischademadda/adbmount/releases/latest/download/adbmount-macos-universal.tar.gz | tar xz
@@ -37,7 +43,6 @@ xattr -d com.apple.quarantine adbmount 2>/dev/null; sudo mv adbmount /usr/local/
 go install github.com/ischademadda/adbmount@latest
 
 # c) from a checkout
-brew install go
 git clone https://github.com/ischademadda/adbmount.git && cd adbmount
 make build && sudo make install   # or: make install PREFIX=$HOME/.local
 ```

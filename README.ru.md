@@ -26,8 +26,14 @@
 ## Установка
 
 ```bash
-brew install --cask fuse-t        # попросит пароль администратора
-brew install android-platform-tools
+# Homebrew (заодно ставит FUSE-T и Android platform-tools; FUSE-T попросит пароль администратора)
+brew install --cask ischademadda/tap/adbmount
+```
+
+Без Homebrew:
+
+```bash
+brew install --cask fuse-t android-platform-tools
 
 # а) готовый universal-бинарник (Apple Silicon + Intel) из последнего релиза
 curl -L https://github.com/ischademadda/adbmount/releases/latest/download/adbmount-macos-universal.tar.gz | tar xz
@@ -37,7 +43,6 @@ xattr -d com.apple.quarantine adbmount 2>/dev/null; sudo mv adbmount /usr/local/
 go install github.com/ischademadda/adbmount@latest
 
 # в) из клона репозитория
-brew install go
 git clone https://github.com/ischademadda/adbmount.git && cd adbmount
 make build && sudo make install   # или: make install PREFIX=$HOME/.local
 ```
