@@ -13,6 +13,8 @@ nothing on the phone except USB debugging.
 phone ──USB/Wi-Fi── adb ──► adbmount serve (Go, cgofuse) ──► FUSE-T (NFS) ──► Finder, Python, ffmpeg, foobar2000…
 ```
 
+![adbmount interactive UI](docs/demo.gif)
+
 One binary does everything: `adbmount up` mounts the phone, `adbmount pull/push` copy
 folders rsync-style, `adbmount wifi` cuts the cable, `adbmount doctor` tells you what is wrong.
 

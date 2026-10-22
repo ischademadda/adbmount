@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Homebrew tap: `brew install --cask ischademadda/tap/adbmount`.
+- UI: help and notices fit 80 columns; home directory shown as `~`.
+- `scripts/make-demo.py` regenerates `docs/demo.gif` from the fake adb.
+
 ## 0.2.0 - 2026-10-23
 
 - Interactive console UI (`adbmount` / `adbmount tui`): live device and mount status, mount and

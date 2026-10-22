@@ -1,6 +1,13 @@
 #!/bin/sh
 # toybox `stat -L -c '%f|%s|%Y|%n'` and `stat -f -c ...` on top of BSD stat
-if [ "$1" = "-f" ]; then echo "4096 1000000 500000 500000"; exit 0; fi
+if [ "$1" = "-f" ]; then
+  # FAKE_ADB_STATFS / FAKE_ADB_STATFS_SD: "bsize blocks free avail" for internal storage / SD card
+  case "$*" in
+    */storage/*) echo "${FAKE_ADB_STATFS_SD:-4096 1000000 500000 500000}" ;;
+    *) echo "${FAKE_ADB_STATFS:-4096 1000000 500000 500000}" ;;
+  esac
+  exit 0
+fi
 shift 2   # -L -c
 shift     # format (only the one adbmount uses is supported)
 for f in "$@"; do /usr/bin/stat -L -f '%Xp|%z|%m|%N' "$f" || exit 1; done

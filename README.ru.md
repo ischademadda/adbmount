@@ -13,6 +13,8 @@
 телефон ──USB/Wi-Fi── adb ──► adbmount serve (Go, cgofuse) ──► FUSE-T (NFS) ──► Finder, Python, ffmpeg, foobar2000…
 ```
 
+![adbmount interactive UI](docs/demo.gif)
+
 Один бинарник делает всё: `adbmount up` монтирует телефон, `adbmount pull/push` копируют папки
 в стиле rsync, `adbmount wifi` убирает кабель, `adbmount doctor` подсказывает, что сломано.
 

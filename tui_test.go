@@ -1,11 +1,13 @@
 package main
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 func testModel(t *testing.T) tuiModel {
@@ -90,5 +92,27 @@ func TestTUIQuitKeys(t *testing.T) {
 	m := testModel(t)
 	if _, cmd := m.Update(key("q")); cmd == nil {
 		t.Error("q must quit")
+	}
+}
+
+func TestTUINoticeShortensHomeAndClips(t *testing.T) {
+	m := testModel(t)
+	home, _ := os.UserHomeDir()
+	m.say("android: /sdcard → "+home+"/mnt/android (read-write)", nil)
+	if !strings.Contains(m.notice, "~/mnt/android") || strings.Contains(m.notice, home) {
+		t.Errorf("home not shortened: %q", m.notice)
+	}
+	if got := clip("abcdefghij", 6); got != "abcde…" {
+		t.Errorf("clip = %q", got)
+	}
+	if got := clip("abc", 6); got != "abc" {
+		t.Errorf("clip must not touch short text: %q", got)
+	}
+	m.width = 40
+	m.notice = strings.Repeat("x", 100)
+	for _, line := range strings.Split(m.View(), "\n") {
+		if lipgloss.Width(line) > 80 {
+			t.Errorf("line wider than 80 columns (%d): %q", lipgloss.Width(line), line)
+		}
 	}
 }

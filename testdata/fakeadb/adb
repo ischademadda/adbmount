@@ -23,7 +23,8 @@ def run_script(script):
         print("SN-SHARED" if os.environ.get("FAKE_ADB_SAME_PHONE") else "SN-" + via)
         return 0
     if script.startswith("getprop"):
-        print("Fake\nPhone 1\n14")
+        man, model, rel = os.environ.get("FAKE_ADB_PHONE", "Fake|Phone 1|14").split("|")
+        print(f"{man}\n{model}\n{rel}")
         return 0
     if script.startswith("ip -f inet addr show wlan0"):
         print("22: wlan0: <UP>\n    inet 192.168.7.42/24 brd 192.168.7.255 scope global wlan0")

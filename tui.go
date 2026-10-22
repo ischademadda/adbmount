@@ -168,6 +168,7 @@ func (m *tuiModel) say(text string, err error) {
 	if err != nil {
 		m.notice = err.Error()
 	}
+	m.notice = shortHomeIn(strings.ReplaceAll(m.notice, "\n", " "))
 }
 
 func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -454,7 +455,7 @@ func (m tuiModel) View() string {
 	case m.listErr != nil:
 		b.WriteString("  " + styErr.Render("✗ "+m.listErr.Error()) + "\n")
 	case len(m.devs) == 0:
-		b.WriteString("  " + styWarn.Render("no device") + styDim.Render(" — plug in the phone with USB debugging on, or press c to connect over Wi-Fi") + "\n")
+		b.WriteString("  " + styWarn.Render("no device") + styDim.Render(" — plug in with USB debugging on, or press c for Wi-Fi") + "\n")
 	}
 	for i, d := range m.devs {
 		dot := styOK.Render("●")
@@ -508,7 +509,7 @@ func (m tuiModel) View() string {
 	fmt.Fprintf(&b, "  [r] read-only mounts      %s\n", styOnOff(m.cfg.ReadOnly))
 	fmt.Fprintf(&b, "  [f] open Finder after up  %s\n", styOnOff(m.cfg.Open))
 	if p := configPath(); p != "" {
-		b.WriteString("  " + styDim.Render("saved in "+shortHome(p)) + "\n")
+		b.WriteString("  " + styDim.Render(clip("saved in "+shortHome(p), m.width-4)) + "\n")
 	}
 
 	if m.showLog && len(m.mounts) > 0 {
@@ -528,14 +529,15 @@ func (m tuiModel) View() string {
 	case m.working != "":
 		b.WriteString(styWarn.Render("… "+m.working) + "\n")
 	case m.notice != "" && m.noticeE:
-		b.WriteString(styErr.Render("✗ "+m.notice) + "\n")
+		b.WriteString(styErr.Render("✗ "+clip(m.notice, m.width-4)) + "\n")
 	case m.notice != "":
-		b.WriteString(styOK.Render("✓ ") + m.notice + "\n")
+		b.WriteString(styOK.Render("✓ ") + clip(m.notice, m.width-4) + "\n")
 	default:
 		b.WriteString("\n")
 	}
-	b.WriteString(styDim.Render("↑↓ move · tab panel · enter mount/unmount or select device · a mount all · u unmount all · o open in Finder") + "\n")
-	b.WriteString(styDim.Render("c connect Wi-Fi · w switch USB phone to Wi-Fi · x disconnect Wi-Fi · l log · q quit (mounts keep running)") + "\n")
+	b.WriteString(styDim.Render("↑↓ move · tab panel · enter mount/unmount/select · a all · u unmount all") + "\n")
+	b.WriteString(styDim.Render("o open in Finder · l log · r/f settings · q quit (mounts keep running)") + "\n")
+	b.WriteString(styDim.Render("Wi-Fi: c connect · w switch USB phone to Wi-Fi · x disconnect") + "\n")
 	return b.String()
 }
 
@@ -551,6 +553,23 @@ func shortHome(p string) string {
 		return "~" + strings.TrimPrefix(p, h)
 	}
 	return p
+}
+
+// shortHomeIn replaces the home directory with ~ anywhere in s.
+func shortHomeIn(s string) string {
+	if h, err := os.UserHomeDir(); err == nil && h != "" && h != "/" {
+		return strings.ReplaceAll(s, h, "~")
+	}
+	return s
+}
+
+// clip cuts s to at most n runes, ending with an ellipsis.
+func clip(s string, n int) string {
+	r := []rune(s)
+	if n <= 1 || len(r) <= n {
+		return s
+	}
+	return string(r[:n-1]) + "…"
 }
 
 func indent(s string) string {
