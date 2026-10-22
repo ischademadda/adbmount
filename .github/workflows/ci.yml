@@ -15,8 +15,3 @@ jobs:
       - name: Install FUSE-T (headers needed by cgofuse)
         run: brew install --cask fuse-t
       - run: make check
-      - name: Lint adbmount
-        run: |
-          brew install shellcheck
-          bash -n adbmount
-          shellcheck adbmount

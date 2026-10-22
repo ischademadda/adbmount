@@ -1,99 +1,90 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
-	"log"
 	"os"
-	"os/exec"
-	"path/filepath"
-	"strconv"
+	"runtime/debug"
 	"strings"
-	"syscall"
-
-	"github.com/winfsp/cgofuse/fuse"
 )
 
-// tempBase is where per-process download/upload copies live. A crash (kill -9,
-// power loss) cannot run deferred cleanup, so leftovers are swept on the next start.
-func tempBase() string {
-	if dir, err := os.UserCacheDir(); err == nil {
-		return filepath.Join(dir, "adbfs")
+// version is set at release time with -ldflags "-X main.version=v1.2.3".
+var version = ""
+
+func buildVersion() string {
+	if version != "" {
+		return version
 	}
-	return filepath.Join(os.TempDir(), "adbfs")
+	if bi, ok := debug.ReadBuildInfo(); ok && bi.Main.Version != "" && bi.Main.Version != "(devel)" {
+		return bi.Main.Version
+	}
+	return "dev"
 }
 
-func pidAlive(pid int) bool {
-	err := syscall.Kill(pid, 0)
-	return err == nil || err == syscall.EPERM
+type command struct {
+	name  string
+	usage string // arguments, for the help text
+	short string
+	run   func(args []string) error
 }
 
-// cleanStaleTemp removes "<pid>-*" directories whose owner process is gone and
-// returns how many were removed. Directories not named that way are left alone.
-func cleanStaleTemp(base string, alive func(int) bool) int {
-	entries, err := os.ReadDir(base)
-	if err != nil {
-		return 0
+func commands() []command {
+	return []command{
+		{"up", "[--ro] [--only android|sdcard] [-s SERIAL]", "mount internal storage and SD card", runUp},
+		{"down", "[android|sdcard ...]", "unmount (everything by default)", runDown},
+		{"status", "", "show what is mounted", runStatus},
+		{"log", "[-f] android|sdcard", "show the daemon log of a mount", runLog},
+		{"devices", "", "list connected phones with their storage volumes", runDevices},
+		{"wifi", "enable|connect|pair|disconnect|usb|scan", "use adb over Wi-Fi instead of a cable", runWifi},
+		{"ls", "[-l] [-s SERIAL] [PATH]", "list a directory on the phone", runLs},
+		{"pull", "[-n] [-f] [-j N] REMOTE... LOCAL", "copy from the phone, skipping unchanged files", runPull},
+		{"push", "[-n] [-f] [-j N] LOCAL... REMOTE", "copy to the phone, skipping unchanged files", runPush},
+		{"doctor", "", "check that everything needed is installed and working", runDoctor},
+		{"serve", "-root DIR -mount DIR [...]", "run the filesystem daemon in the foreground (used by up)", runServe},
+		{"version", "", "print the version", func([]string) error { fmt.Println("adbmount", buildVersion()); return nil }},
 	}
-	removed := 0
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		pidStr, _, found := strings.Cut(e.Name(), "-")
-		pid, err := strconv.Atoi(pidStr)
-		if !found || err != nil || pid <= 0 || alive(pid) {
-			continue
-		}
-		if os.RemoveAll(filepath.Join(base, e.Name())) == nil {
-			removed++
-		}
+}
+
+func usage() {
+	var b strings.Builder
+	b.WriteString("adbmount: mount and manage an Android phone from macOS over adb\n\nUsage: adbmount <command> [options]\n\nCommands:\n")
+	for _, c := range commands() {
+		fmt.Fprintf(&b, "  %-9s %s\n", c.name, c.short)
 	}
-	return removed
+	b.WriteString("\nRun `adbmount <command> -h` for the options of a command.\n")
+	b.WriteString("PATH arguments accept `sd:` (SD card root) and `int:` (internal storage) prefixes.\n")
+	b.WriteString("Select a device with -s SERIAL or ANDROID_SERIAL; Wi-Fi devices look like 192.168.1.20:5555.\n")
+	fmt.Fprint(os.Stderr, b.String())
 }
 
 func main() {
-	var (
-		mountpoint = flag.String("mount", os.ExpandEnv("$HOME/mnt/android"), "local mount point (created if missing)")
-		root       = flag.String("root", "/sdcard", "remote directory to expose")
-		serial     = flag.String("serial", "", "adb device serial (default device if empty)")
-		adbBin     = flag.String("adb", "adb", "path to adb")
-		volname    = flag.String("volname", "Android", "volume name shown in Finder")
-		ro         = flag.Bool("ro", false, "mount read-only")
-		allowJunk  = flag.Bool("allow-junk", false, "store macOS ._* / .DS_Store files on the device instead of discarding them")
-	)
-	flag.Parse()
-
-	path, err := exec.LookPath(*adbBin)
-	if err != nil {
-		log.Fatalf("adb not found: %v", err)
+	if len(os.Args) < 2 {
+		usage()
+		os.Exit(2)
 	}
-	if err := os.MkdirAll(*mountpoint, 0o755); err != nil {
-		log.Fatal(err)
+	name := os.Args[1]
+	switch name {
+	case "-h", "--help", "help":
+		usage()
+		return
+	case "-v", "--version":
+		name = "version"
 	}
-
-	base := tempBase()
-	if err := os.MkdirAll(base, 0o755); err != nil {
-		log.Fatal(err)
+	for _, c := range commands() {
+		if c.name != name {
+			continue
+		}
+		if err := c.run(os.Args[2:]); err != nil {
+			if errors.Is(err, flag.ErrHelp) {
+				return
+			}
+			fmt.Fprintf(os.Stderr, "adbmount %s: %v\n", name, err)
+			os.Exit(1)
+		}
+		return
 	}
-	if n := cleanStaleTemp(base, pidAlive); n > 0 {
-		log.Printf("removed %d stale temp dir(s) from earlier crashed runs", n)
-	}
-	tmp, err := os.MkdirTemp(base, fmt.Sprintf("%d-", os.Getpid()))
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer os.RemoveAll(tmp)
-
-	a := &adb{bin: path, serial: *serial}
-	if _, err := a.stat(*root); err != nil {
-		log.Fatalf("cannot stat %s on device: %v", *root, err)
-	}
-
-	fs := newAdbFS(a, *root, tmp, *ro, !*allowJunk)
-	host := fuse.NewFileSystemHost(fs)
-	fmt.Printf("mounting %s at %s\n", *root, *mountpoint)
-	if !host.Mount(*mountpoint, []string{"-o", "volname=" + *volname}) {
-		log.Fatal("mount failed")
-	}
+	fmt.Fprintf(os.Stderr, "adbmount: unknown command %q\n\n", name)
+	usage()
+	os.Exit(2)
 }

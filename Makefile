@@ -1,14 +1,16 @@
 PREFIX ?= /usr/local
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 
-.PHONY: build test vet check install
+.PHONY: build test vet check install clean
 build:
-	go build -o adbfs .
+	go build -ldflags "-X main.version=$(VERSION)" -o adbmount .
 vet:
 	go vet ./...
 test:
 	go test ./... -count=1
 check: vet test build
-# adbmount looks for adbfs next to itself, so both go to the same directory.
 install: build
 	install -d $(PREFIX)/bin
-	install -m 755 adbfs adbmount $(PREFIX)/bin/
+	install -m 755 adbmount $(PREFIX)/bin/
+clean:
+	rm -f adbmount
