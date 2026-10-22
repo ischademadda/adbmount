@@ -66,6 +66,25 @@ func connectedOK(out string) bool {
 	return strings.Contains(out, "connected to") // also matches "already connected to"
 }
 
+// needsServerRestart recognises the failure a stale adb server gives for a host
+// that is reachable from the shell (seen after the server outlived a network or
+// permission change): a restart fixes it.
+func needsServerRestart(out string) bool {
+	return strings.Contains(out, "No route to host")
+}
+
+// adbConnect runs `adb connect`, restarting the adb server once if it reports a
+// route failure.
+func adbConnect(bin, target string) (string, bool) {
+	out, _ := adbOutput(bin, "connect", target)
+	if !connectedOK(out) && needsServerRestart(out) {
+		adbOutput(bin, "kill-server")
+		adbOutput(bin, "start-server")
+		out, _ = adbOutput(bin, "connect", target)
+	}
+	return out, connectedOK(out)
+}
+
 func runWifi(args []string) error {
 	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" {
 		fmt.Fprint(os.Stderr, `usage: adbmount wifi <subcommand>
@@ -94,8 +113,8 @@ Then use the Wi-Fi serial everywhere: adbmount up -s 192.168.1.20:5555
 			return fail("usage: adbmount wifi connect HOST[:PORT]")
 		}
 		target := withPort(rest[0])
-		out, _ := adbOutput(bin, "connect", target)
-		if !connectedOK(out) {
+		out, ok := adbConnect(bin, target)
+		if !ok {
 			return fail("%s", out)
 		}
 		fmt.Println(out)
@@ -168,7 +187,8 @@ func wifiEnable(bin string, args []string) error {
 	var out string
 	for i := 0; i < 10; i++ {
 		time.Sleep(time.Second)
-		if out, _ = adbOutput(bin, "connect", target); connectedOK(out) {
+		var ok bool
+		if out, ok = adbConnect(bin, target); ok {
 			fmt.Printf("%s\n\nYou can unplug the cable now. Use it with:\n  adbmount up -s %s\n", out, target)
 			fmt.Println("The setting lasts until the phone reboots; `adbmount wifi usb` reverts it.")
 			return nil

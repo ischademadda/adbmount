@@ -206,6 +206,10 @@ specific tests fail).
   UUID changed; `adb shell ls /storage` shows the real name.
 * **`adbmount wifi enable` cannot connect**: the phone and the Mac must share a network (guest
   Wi-Fi with client isolation blocks it); try the pairing flow, or `adb kill-server` and retry.
+* **`failed to connect … No route to host`, yet `nc -z HOST 5555` works**: a stale adb server;
+  `adbmount wifi` restarts it automatically, by hand it is `adb kill-server`.
+* **Wi-Fi is very slow** (tens of KB/s while USB gives ~20 MB/s): that is the network, plain `adb pull`
+  is equally slow. Check signal strength, router client isolation and VPN on the phone.
 * **Build fails with `fuse.h` not found**: install FUSE-T (`brew install --cask fuse-t`).
 
 ## License

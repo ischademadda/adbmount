@@ -1,10 +1,11 @@
 # Changelog
 
-## Unreleased
+## 0.1.0 - 2026-10-23
 
 - Single `adbmount` binary with subcommands replaces the `adbfs` binary plus bash launcher.
 - New: `devices`, `doctor`, `ls`, `pull`, `push` (rsync-style, parallel, size-verified, resumable),
   `wifi` (enable / pair / connect / scan / disconnect / usb), `completion`, `up --open`.
+- `wifi` restarts a stale adb server on "No route to host".
 - One phone visible over USB and Wi-Fi is no longer reported as "several devices".
 
 ## Initial version

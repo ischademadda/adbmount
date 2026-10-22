@@ -81,6 +81,9 @@ func TestWithPort(t *testing.T) {
 			t.Errorf("withPort(%q) = %q, want %q", in, got, want)
 		}
 	}
+	if !needsServerRestart("failed to connect to '1.2.3.4:5555': No route to host") || needsServerRestart("failed to connect: Connection refused") {
+		t.Error("needsServerRestart misclassifies")
+	}
 	if !connectedOK("already connected to 1.2.3.4:5555") || !connectedOK("connected to 1.2.3.4:5555") || connectedOK("failed to connect to 1.2.3.4:5555") {
 		t.Error("connectedOK misclassifies adb output")
 	}
